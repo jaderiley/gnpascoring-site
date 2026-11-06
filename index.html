@@ -677,7 +677,7 @@
     { name: 'Ladies',      format: 'rotation', teamSize: 6 },
     { name: 'Tshwane',     format: 'rotation', teamSize: 5 },
     { name: '3-Man',       format: 'threeman', teamSize: 3 },
-    { name: 'Juniors',     format: 'juniors',  teamSize: 2 }
+    { name: 'Juniors',     format: 'juniors',  teamSize: 1 }
   ];
 
   // 3-Man fixed singles order
@@ -692,9 +692,10 @@
     { home:[0,2], away:[0,2] }
   ];
 
-  // Juniors fixed game order: [homeIdx, awayIdx]
+  // Juniors is 1v1 (Jade 2026-11-06): each junior is their own "team" with
+  // their own code, one game, first to JUNIORS_RACE_TO.
   var JUNIORS_GAMES = [
-    [0,0],[1,1],[0,1],[1,0]
+    [0,0]
   ];
   var JUNIORS_RACE_TO = 5;
 
@@ -743,6 +744,23 @@
     '</g>' +
     '</svg>';
 
+  function freshJuniorsGames(){
+    var a = [];
+    for(var i=0;i<JUNIORS_GAMES.length;i++) a.push({home:0,away:0});
+    return a;
+  }
+
+  function isJuniors(){ return leagueFormat() === 'juniors'; }
+
+  // In Juniors the "team" IS the junior: one player, who is also the captain.
+  function syncJuniorSide(side){
+    if(!isJuniors()) return;
+    var name = state[side + 'Team'] || '';
+    state[side + 'Players'] = [name];
+    state[side + 'Captain'] = name;
+    state[side + 'Absent'] = [false];
+  }
+
   function defaultState(){
     return {
       date: new Date().toISOString().slice(0,10),
@@ -759,7 +777,7 @@
       awayAbsent: [false,false,false,false,false,false],
       results: [[null,null,null,null,null,null],[null,null,null,null,null,null],[null,null,null,null,null,null],[null,null,null,null,null,null],[null,null,null,null,null,null],[null,null,null,null,null,null]],
       doublesResults: [null, null, null],
-      juniorsGames: [{home:0,away:0},{home:0,away:0},{home:0,away:0},{home:0,away:0}],
+      juniorsGames: freshJuniorsGames(),
       currentRound: 0,
       view: 'setup',
       submitted: false
@@ -793,8 +811,8 @@
     if(!state.doublesResults || state.doublesResults.length !== 3){
       state.doublesResults = [null, null, null];
     }
-    if(!state.juniorsGames || state.juniorsGames.length !== 4){
-      state.juniorsGames = [{home:0,away:0},{home:0,away:0},{home:0,away:0},{home:0,away:0}];
+    if(!state.juniorsGames || state.juniorsGames.length !== JUNIORS_GAMES.length){
+      state.juniorsGames = freshJuniorsGames();
     }
 
     if(state.currentRound >= n) state.currentRound = n - 1;
@@ -809,6 +827,9 @@
   }
 
   var state = load() || defaultState();
+  if(!state.juniorsGames || state.juniorsGames.length !== JUNIORS_GAMES.length){
+    state.juniorsGames = freshJuniorsGames();
+  }
   if(!state.homeAbsent) state.homeAbsent = [false,false,false,false,false,false];
   if(!state.awayAbsent) state.awayAbsent = [false,false,false,false,false,false];
 
@@ -1169,7 +1190,7 @@
     var homeEl = document.getElementById('f-home');
     var awayEl = document.getElementById('f-away');
     if(!homeEl || !awayEl) return;
-    var opts = '<option value="">Select team...</option>';
+    var opts = '<option value="">' + (isJuniors() ? 'Select player...' : 'Select team...') + '</option>';
     for(var i=0;i<teams.length;i++){
       opts += '<option value="' + escapeHtml(teams[i]) + '">' + escapeHtml(teams[i]) + '</option>';
     }
@@ -2113,6 +2134,17 @@
       '</div>';
   }
 
+  function teamPickHtml(n, homeInputs, awayInputs){
+    return '<div class="field-row"><div class="team-card"><div class="field-label">Home team</div><select id="f-home"><option value="">' + (state.league ? 'Loading teams...' : 'Pick league first') + '</option></select><select id="f-hcap" data-cside="home"><option value="">— pick team first —</option></select><input id="f-hcap-res" type="text" placeholder="Reserve captain name" data-cres data-cside="home" style="display:none;"></div><div class="team-card"><div class="field-label">Away team</div><select id="f-away"><option value="">' + (state.league ? 'Loading teams...' : 'Pick league first') + '</option></select><select id="f-acap" data-cside="away"><option value="">— pick team first —</option></select><input id="f-acap-res" type="text" placeholder="Reserve captain name" data-cres data-cside="away" style="display:none;"></div></div>' +
+      '<div class="players-card"><div class="players-section-title">Players (' + n + ' per side)</div><div class="players-grid"><div class="players-col">' + homeInputs + '</div><div class="players-col">' + awayInputs + '</div></div></div>';
+  }
+
+  // Juniors: just pick the two juniors. No captain or line-up pickers.
+  function juniorsPickHtml(){
+    var loading = state.league ? 'Loading players...' : 'Pick league first';
+    return '<div class="field-row"><div class="team-card"><div class="field-label">Home player</div><select id="f-home"><option value="">' + loading + '</option></select></div><div class="team-card"><div class="field-label">Away player</div><select id="f-away"><option value="">' + loading + '</option></select></div></div>';
+  }
+
   function renderSetup(){
     var n = teamSize();
     var fmt = leagueFormat();
@@ -2128,7 +2160,7 @@
       var sel = (state.league === L.name) ? ' selected' : '';
       var sizeLabel;
       if(L.format === 'threeman') sizeLabel = '3-man + doubles';
-      else if(L.format === 'juniors') sizeLabel = '2-man, race to 5';
+      else if(L.format === 'juniors') sizeLabel = '1v1, race to ' + JUNIORS_RACE_TO;
       else sizeLabel = L.teamSize + '-man';
       leagueOptions += '<option value="' + escapeHtml(L.name) + '"' + sel + '>' + escapeHtml(L.name) + ' (' + sizeLabel + ')</option>';
     }
@@ -2138,7 +2170,7 @@
       if(fmt === 'threeman'){
         formatNote = '<div style="font-size:var(--fs-xs);color:var(--text-tertiary);margin-top:6px;">3 players per side · 9 singles + 3 doubles · 12 frames total</div>';
       } else if(fmt === 'juniors'){
-        formatNote = '<div style="font-size:var(--fs-xs);color:var(--text-tertiary);margin-top:6px;">2 players per side · 4 rounds, race to 5 each · score = total points</div>';
+        formatNote = '<div style="font-size:var(--fs-xs);color:var(--text-tertiary);margin-top:6px;">1v1 · first to ' + JUNIORS_RACE_TO + ' wins · each junior confirms with their own code</div>';
       } else {
         formatNote = '<div style="font-size:var(--fs-xs);color:var(--text-tertiary);margin-top:6px;">' + n + ' players per side · ' + (n*n) + ' frames · ' + n + ' rounds</div>';
       }
@@ -2146,8 +2178,7 @@
 
     app.innerHTML = headerHtml('setup') +
       '<div class="field-row stackable"><div class="field"><span class="field-label">Date</span><input id="f-date" type="date" value="' + state.date + '"></div><div class="field"><span class="field-label">League</span><select id="f-league">' + leagueOptions + '</select>' + formatNote + '</div></div>' +
-      '<div class="field-row"><div class="team-card"><div class="field-label">Home team</div><select id="f-home"><option value="">' + (state.league ? 'Loading teams...' : 'Pick league first') + '</option></select><select id="f-hcap" data-cside="home"><option value="">— pick team first —</option></select><input id="f-hcap-res" type="text" placeholder="Reserve captain name" data-cres data-cside="home" style="display:none;"></div><div class="team-card"><div class="field-label">Away team</div><select id="f-away"><option value="">' + (state.league ? 'Loading teams...' : 'Pick league first') + '</option></select><select id="f-acap" data-cside="away"><option value="">— pick team first —</option></select><input id="f-acap-res" type="text" placeholder="Reserve captain name" data-cres data-cside="away" style="display:none;"></div></div>' +
-      '<div class="players-card"><div class="players-section-title">Players (' + n + ' per side)</div><div class="players-grid"><div class="players-col">' + homeInputs + '</div><div class="players-col">' + awayInputs + '</div></div></div>' +
+      (fmt === 'juniors' ? juniorsPickHtml() : teamPickHtml(n, homeInputs, awayInputs)) +
       '<div class="actions"><button id="reset-btn" class="btn-danger">Reset match</button><button id="start-btn" class="btn-primary">Start scoring →</button></div>' +
       '<div class="install-hint">Tip: on iPhone tap Share → "Add to Home Screen". On Android use Chrome\'s "Add to Home screen" menu. Works offline once installed.</div>';
 
@@ -2162,6 +2193,7 @@
         state[key] = e.target.value;
         clearPlayersForSide(side);
         state[side + 'Captain'] = '';
+        syncJuniorSide(side);
         state.submitted = false;
         save();
         populatePlayerDropdowns();
@@ -2345,6 +2377,19 @@
       if(!state.league){
         alert('Please select a league first.');
         return;
+      }
+      if(isJuniors()){
+        if(!state.homeTeam || !state.awayTeam){
+          alert('Please pick both players first.');
+          return;
+        }
+        if(state.homeTeam === state.awayTeam){
+          alert('Pick two different players.');
+          return;
+        }
+        syncJuniorSide('home');
+        syncJuniorSide('away');
+        save();
       }
       state.view='play'; render();
     });
@@ -2538,24 +2583,26 @@
       var winnerName = winner === 'H' ? hName : aName;
       winnerBanner =
         '<div class="juniors-winner ' + (winner==='H' ? 'home' : 'away') + '">' +
-          '<span>Round won by ' + escapeHtml(winnerName) + '</span>' +
+          '<span>' + (TOTAL_ROUNDS > 1 ? 'Round' : 'Match') + ' won by ' + escapeHtml(winnerName) + '</span>' +
         '</div>';
     }
 
     var t = totals();
 
-    app.innerHTML = headerHtml('play') +
+    var roundNav = TOTAL_ROUNDS > 1 ?
       '<div class="round-nav">' +
         '<button id="prev-r"' + (r===0?' disabled':'') + '>←</button>' +
         '<div class="round-title">Round ' + (r+1) + ' of ' + TOTAL_ROUNDS + '</div>' +
         '<button id="next-r"' + (r===TOTAL_ROUNDS-1?' disabled':'') + '>→</button>' +
-      '</div>' +
-      '<div class="juniors-meta">First to ' + JUNIORS_RACE_TO + ' wins this round · Match score ' + t.h + '–' + t.a + '</div>' +
+      '</div>' : '';
+    app.innerHTML = headerHtml('play') +
+      roundNav +
+      '<div class="juniors-meta">First to ' + JUNIORS_RACE_TO + ' wins' + (TOTAL_ROUNDS > 1 ? ' this round · Match score ' + t.h + '–' + t.a : '') + '</div>' +
 
       '<div class="juniors-game">' +
         '<div class="juniors-side ' + (winner==='H'?'winner':'') + '">' +
           '<div class="juniors-name">' + escapeHtml(hName) + '</div>' +
-          '<div class="juniors-pos">Home ' + (hi+1) + '</div>' +
+          '<div class="juniors-pos">Home</div>' +
           '<div class="juniors-counter">' +
             '<button class="counter-btn minus" data-side="H" data-delta="-1" ' + (game.home<=0?'disabled':'') + '>−</button>' +
             '<div class="counter-value home">' + game.home + '</div>' +
@@ -2567,7 +2614,7 @@
 
         '<div class="juniors-side ' + (winner==='A'?'winner':'') + '">' +
           '<div class="juniors-name">' + escapeHtml(aName) + '</div>' +
-          '<div class="juniors-pos">Away ' + (ai+1) + '</div>' +
+          '<div class="juniors-pos">Away</div>' +
           '<div class="juniors-counter">' +
             '<button class="counter-btn minus" data-side="A" data-delta="-1" ' + (game.away<=0?'disabled':'') + '>−</button>' +
             '<div class="counter-value away">' + game.away + '</div>' +
@@ -2579,15 +2626,16 @@
       winnerBanner +
 
       ((game.home > 0 || game.away > 0) ?
-        '<button class="clear-btn" id="reset-game-btn" style="display:block;margin:var(--sp-2) auto 0;">reset this round</button>'
+        '<button class="clear-btn" id="reset-game-btn" style="display:block;margin:var(--sp-2) auto 0;">' + (TOTAL_ROUNDS > 1 ? 'reset this round' : 'reset score') + '</button>'
         : '');
 
     bindTabs();
 
-    app.querySelector('#prev-r').addEventListener('click', function(){
+    var prevBtn = app.querySelector('#prev-r'), nextBtn = app.querySelector('#next-r');
+    if(prevBtn) prevBtn.addEventListener('click', function(){
       if(state.currentRound>0){ state.currentRound--; render(); }
     });
-    app.querySelector('#next-r').addEventListener('click', function(){
+    if(nextBtn) nextBtn.addEventListener('click', function(){
       if(state.currentRound<TOTAL_ROUNDS-1){ state.currentRound++; render(); }
     });
 
@@ -2770,7 +2818,7 @@
       var aCls = winner==='A' ? 'away' : '';
       rowsHtml +=
         '<tr>' +
-          '<td class="tm-pos">R' + (g+1) + '</td>' +
+          '<td class="tm-pos">' + (JUNIORS_GAMES.length === 1 ? '' : 'R' + (g+1)) + '</td>' +
           '<td class="tm-name">' + escapeHtml(hN) + '</td>' +
           '<td class="tm-score ' + hCls + '">' + game.home + '</td>' +
           '<td class="tm-vs">vs</td>' +
@@ -2782,10 +2830,11 @@
     app.innerHTML = headerHtml('grid') +
       '<div class="grid-help">Read-only overview · edit scores in the Play tab</div>' +
       '<div class="tm-card">' +
-        '<div class="tm-section-title">Rounds (race to ' + JUNIORS_RACE_TO + ')</div>' +
+        '<div class="tm-section-title">' + (JUNIORS_GAMES.length === 1 ? 'Game' : 'Rounds') + ' (first to ' + JUNIORS_RACE_TO + ')</div>' +
         '<table class="tm-table"><tbody>' + rowsHtml + '</tbody></table>' +
-        '<div class="tm-subtotal"><span>Rounds won</span><span>' + hGameWins + ' – ' + aGameWins + '</span></div>' +
-        '<div class="tm-subtotal"><span>Points scored</span><span>' + hTotalPoints + ' – ' + aTotalPoints + '</span></div>' +
+        (JUNIORS_GAMES.length === 1 ? '' :
+          '<div class="tm-subtotal"><span>Rounds won</span><span>' + hGameWins + ' – ' + aGameWins + '</span></div>' +
+          '<div class="tm-subtotal"><span>Points scored</span><span>' + hTotalPoints + ' – ' + aTotalPoints + '</span></div>') +
       '</div>' +
       '<div class="tm-grand"><span>Match Score</span><span>' + t.h + ' – ' + t.a + '</span></div>';
 
@@ -2831,11 +2880,11 @@
 
     var codeGate =
       '<div class="code-gate">' +
-        '<div class="code-gate-hint">Both teams confirm the result by entering their own team code.</div>' +
+        '<div class="code-gate-hint">' + (isJuniors() ? 'Both players confirm the result by entering their own code.' : 'Both teams confirm the result by entering their own team code.') + '</div>' +
         '<div class="code-gate-row">' +
-          '<div class="field"><span class="field-label">' + escapeHtml(state.homeTeam || 'Home') + ' team code</span>' +
+          '<div class="field"><span class="field-label">' + escapeHtml(state.homeTeam || 'Home') + (isJuniors() ? ' code' : ' team code') + '</span>' +
             '<input id="f-hcode" type="password" inputmode="numeric" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="12" placeholder="••••" value="' + escapeHtml(state.homeCode || '') + '"></div>' +
-          '<div class="field"><span class="field-label">' + escapeHtml(state.awayTeam || 'Away') + ' team code</span>' +
+          '<div class="field"><span class="field-label">' + escapeHtml(state.awayTeam || 'Away') + (isJuniors() ? ' code' : ' team code') + '</span>' +
             '<input id="f-acode" type="password" inputmode="numeric" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="12" placeholder="••••" value="' + escapeHtml(state.awayCode || '') + '"></div>' +
         '</div>' +
       '</div>';
@@ -2845,14 +2894,17 @@
       (state.submitted ? '' : codeGate) +
       '<button id="submit-btn" class="btn-success" style="width:100%;padding:12px;font-size:var(--fs-sm);" ' + (!canSubmit||state.submitted?'disabled':'') + '>' + submitLabel + '</button>' +
       '<div id="submit-status" class="submit-status info">' +
-        (canSubmit ? (state.submitted ? 'Already submitted. Edit any score to re-enable.' : 'Sends match data to the league sheet') : (t.total-t.played) + ' ' + unit + (t.total-t.played===1?'':'s') + ' still to play') +
+        (canSubmit ? (state.submitted ? 'Already submitted. Edit any score to re-enable.' : 'Sends match data to the league sheet') : (fmt === 'juniors' ? 'Finish the game first' : (t.total-t.played) + ' ' + unit + (t.total-t.played===1?'':'s') + ' still to play')) +
       '</div>' +
       '</div>';
 
     app.innerHTML = headerHtml('summary') +
       '<div class="summary-scores"><div class="score-card"><div class="score-card-label">' + escapeHtml(state.homeTeam || 'Home') + '</div><div class="score-card-value">' + t.h + '</div></div><div class="score-card"><div class="score-card-label">' + escapeHtml(state.awayTeam || 'Away') + '</div><div class="score-card-value">' + t.a + '</div></div></div>' +
-      '<div class="summary-status">' + unitsLabel + (t.remaining===0 ? ' · ' + (winning==='tied'?'match drawn':winning+' team wins') : '') + '</div>' +
-      '<div class="summary-cols"><div><div class="summary-col-title">Home players</div>' + homeRowsHtml + '</div><div><div class="summary-col-title">Away players</div>' + awayRowsHtml + '</div></div>' +
+      (fmt === 'juniors' ?
+        '<div class="summary-status">' + (t.remaining===0 ? escapeHtml((t.h > t.a ? state.homeTeam : state.awayTeam) || '') + ' wins' : 'Game not finished yet') + '</div>'
+      :
+        '<div class="summary-status">' + unitsLabel + (t.remaining===0 ? ' · ' + (winning==='tied'?'match drawn':winning+' team wins') : '') + '</div>' +
+        '<div class="summary-cols"><div><div class="summary-col-title">Home players</div>' + homeRowsHtml + '</div><div><div class="summary-col-title">Away players</div>' + awayRowsHtml + '</div></div>') +
       '<button id="export-btn" style="width:100%;padding:12px;font-size:var(--fs-sm);">Copy match summary</button>' +
       '<div id="export-status" class="export-status"></div>' +
       submitSection;
