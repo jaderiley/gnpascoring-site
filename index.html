@@ -248,6 +248,14 @@
   .tm-grand { display: flex; justify-content: space-between; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-3) var(--sp-4); font-size: var(--fs-md); font-weight: 600; }
   .tm-grand span:last-child { font-size: var(--fs-lg); color: var(--accent); font-variant-numeric: tabular-nums; }
 
+  /* ============ JUNIORS GAMES LIST (best of 5) ============ */
+  .jg-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+  .jg-row { display: grid; grid-template-columns: 64px 1fr 1fr; gap: var(--sp-2); align-items: center; }
+  .jg-num { font-size: var(--fs-xs); color: var(--text-secondary); }
+  .jg-btn { padding: 12px 8px; font-size: var(--fs-sm); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .jg-btn.home.on { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); font-weight: 600; }
+  .jg-btn.away.on { background: var(--away-bg); color: var(--away); border: 1px solid var(--away-border); font-weight: 600; }
+
   /* ============ JUNIORS COUNTER UI ============ */
   .juniors-meta {
     text-align: center;
@@ -692,12 +700,13 @@
     { home:[0,2], away:[0,2] }
   ];
 
-  // Juniors is 1v1 (Jade 2026-11-06): each junior is their own "team" with
-  // their own code, one game, first to JUNIORS_RACE_TO.
+  // Juniors is 1v1 (league, 2026-11-06): each junior is their own "team" with
+  // their own code. Best of 5 = always play all 5 games, every game recorded,
+  // so a match ends 5-0, 4-1 or 3-2. A game is won at JUNIORS_RACE_TO (1).
   var JUNIORS_GAMES = [
-    [0,0]
+    [0,0],[0,0],[0,0],[0,0],[0,0]
   ];
-  var JUNIORS_RACE_TO = 5;
+  var JUNIORS_RACE_TO = 1;
 
   function getLeagueConfig(name){
     for(var i=0;i<LEAGUES.length;i++){
@@ -2160,7 +2169,7 @@
       var sel = (state.league === L.name) ? ' selected' : '';
       var sizeLabel;
       if(L.format === 'threeman') sizeLabel = '3-man + doubles';
-      else if(L.format === 'juniors') sizeLabel = '1v1, race to ' + JUNIORS_RACE_TO;
+      else if(L.format === 'juniors') sizeLabel = '1v1, ' + JUNIORS_GAMES.length + ' games';
       else sizeLabel = L.teamSize + '-man';
       leagueOptions += '<option value="' + escapeHtml(L.name) + '"' + sel + '>' + escapeHtml(L.name) + ' (' + sizeLabel + ')</option>';
     }
@@ -2170,7 +2179,7 @@
       if(fmt === 'threeman'){
         formatNote = '<div style="font-size:var(--fs-xs);color:var(--text-tertiary);margin-top:6px;">3 players per side · 9 singles + 3 doubles · 12 frames total</div>';
       } else if(fmt === 'juniors'){
-        formatNote = '<div style="font-size:var(--fs-xs);color:var(--text-tertiary);margin-top:6px;">1v1 · first to ' + JUNIORS_RACE_TO + ' wins · each junior confirms with their own code</div>';
+        formatNote = '<div style="font-size:var(--fs-xs);color:var(--text-tertiary);margin-top:6px;">1v1 · all ' + JUNIORS_GAMES.length + ' games played · each junior confirms with their own code</div>';
       } else {
         formatNote = '<div style="font-size:var(--fs-xs);color:var(--text-tertiary);margin-top:6px;">' + n + ' players per side · ' + (n*n) + ' frames · ' + n + ' rounds</div>';
       }
@@ -2562,7 +2571,50 @@
     }
   }
 
+  // Juniors best-of-5: one row per game, tap who won it (tap again to clear).
+  function renderPlayJuniorsGames(){
+    var hName = state.homePlayers[0] || 'Home';
+    var aName = state.awayPlayers[0] || 'Away';
+    var t = totals();
+    var rows = '';
+    for(var g=0;g<JUNIORS_GAMES.length;g++){
+      var game = state.juniorsGames[g] || {home:0,away:0};
+      var w = game.home >= 1 ? 'H' : (game.away >= 1 ? 'A' : null);
+      rows +=
+        '<div class="jg-row">' +
+          '<div class="jg-num">Game ' + (g+1) + '</div>' +
+          '<button class="jg-btn home' + (w==='H'?' on':'') + '" data-g="' + g + '" data-w="H">' + escapeHtml(hName) + '</button>' +
+          '<button class="jg-btn away' + (w==='A'?' on':'') + '" data-g="' + g + '" data-w="A">' + escapeHtml(aName) + '</button>' +
+        '</div>';
+    }
+    var status = t.remaining === 0
+      ? escapeHtml(t.h > t.a ? hName : aName) + ' wins ' + Math.max(t.h,t.a) + '–' + Math.min(t.h,t.a)
+      : t.played + ' of ' + t.total + ' games played · tap who won each game';
+
+    app.innerHTML = headerHtml('play') +
+      '<div class="juniors-meta">' + status + '</div>' +
+      '<div class="jg-list">' + rows + '</div>';
+
+    bindTabs();
+
+    var btns = app.querySelectorAll('button.jg-btn');
+    for(var i=0;i<btns.length;i++){
+      btns[i].addEventListener('click', function(e){
+        var b = e.currentTarget;
+        var g = +b.getAttribute('data-g');
+        var w = b.getAttribute('data-w');
+        var cur = state.juniorsGames[g] || {home:0,away:0};
+        var was = cur.home >= 1 ? 'H' : (cur.away >= 1 ? 'A' : null);
+        state.juniorsGames[g] = (was === w) ? {home:0,away:0} : (w === 'H' ? {home:1,away:0} : {home:0,away:1});
+        state.submitted = false;
+        save();
+        render();
+      });
+    }
+  }
+
   function renderPlayJuniors(){
+    if(JUNIORS_RACE_TO === 1){ renderPlayJuniorsGames(); return; }
     var TOTAL_ROUNDS = JUNIORS_GAMES.length;
     var r = state.currentRound;
     if(r >= TOTAL_ROUNDS) { r = state.currentRound = TOTAL_ROUNDS - 1; }
@@ -2818,7 +2870,7 @@
       var aCls = winner==='A' ? 'away' : '';
       rowsHtml +=
         '<tr>' +
-          '<td class="tm-pos">' + (JUNIORS_GAMES.length === 1 ? '' : 'R' + (g+1)) + '</td>' +
+          '<td class="tm-pos">' + (JUNIORS_GAMES.length === 1 ? '' : (JUNIORS_RACE_TO === 1 ? 'G' : 'R') + (g+1)) + '</td>' +
           '<td class="tm-name">' + escapeHtml(hN) + '</td>' +
           '<td class="tm-score ' + hCls + '">' + game.home + '</td>' +
           '<td class="tm-vs">vs</td>' +
@@ -2830,9 +2882,9 @@
     app.innerHTML = headerHtml('grid') +
       '<div class="grid-help">Read-only overview · edit scores in the Play tab</div>' +
       '<div class="tm-card">' +
-        '<div class="tm-section-title">' + (JUNIORS_GAMES.length === 1 ? 'Game' : 'Rounds') + ' (first to ' + JUNIORS_RACE_TO + ')</div>' +
+        '<div class="tm-section-title">' + (JUNIORS_RACE_TO === 1 ? 'Games (best of ' + JUNIORS_GAMES.length + ')' : (JUNIORS_GAMES.length === 1 ? 'Game' : 'Rounds') + ' (first to ' + JUNIORS_RACE_TO + ')') + '</div>' +
         '<table class="tm-table"><tbody>' + rowsHtml + '</tbody></table>' +
-        (JUNIORS_GAMES.length === 1 ? '' :
+        (JUNIORS_GAMES.length === 1 || JUNIORS_RACE_TO === 1 ? '' :
           '<div class="tm-subtotal"><span>Rounds won</span><span>' + hGameWins + ' – ' + aGameWins + '</span></div>' +
           '<div class="tm-subtotal"><span>Points scored</span><span>' + hTotalPoints + ' – ' + aTotalPoints + '</span></div>') +
       '</div>' +
@@ -2894,14 +2946,14 @@
       (state.submitted ? '' : codeGate) +
       '<button id="submit-btn" class="btn-success" style="width:100%;padding:12px;font-size:var(--fs-sm);" ' + (!canSubmit||state.submitted?'disabled':'') + '>' + submitLabel + '</button>' +
       '<div id="submit-status" class="submit-status info">' +
-        (canSubmit ? (state.submitted ? 'Already submitted. Edit any score to re-enable.' : 'Sends match data to the league sheet') : (fmt === 'juniors' ? 'Finish the game first' : (t.total-t.played) + ' ' + unit + (t.total-t.played===1?'':'s') + ' still to play')) +
+        (canSubmit ? (state.submitted ? 'Already submitted. Edit any score to re-enable.' : 'Sends match data to the league sheet') : (fmt === 'juniors' ? 'Record all ' + t.total + ' games first' : (t.total-t.played) + ' ' + unit + (t.total-t.played===1?'':'s') + ' still to play')) +
       '</div>' +
       '</div>';
 
     app.innerHTML = headerHtml('summary') +
       '<div class="summary-scores"><div class="score-card"><div class="score-card-label">' + escapeHtml(state.homeTeam || 'Home') + '</div><div class="score-card-value">' + t.h + '</div></div><div class="score-card"><div class="score-card-label">' + escapeHtml(state.awayTeam || 'Away') + '</div><div class="score-card-value">' + t.a + '</div></div></div>' +
       (fmt === 'juniors' ?
-        '<div class="summary-status">' + (t.remaining===0 ? escapeHtml((t.h > t.a ? state.homeTeam : state.awayTeam) || '') + ' wins' : 'Game not finished yet') + '</div>'
+        '<div class="summary-status">' + (t.remaining===0 ? escapeHtml((t.h > t.a ? state.homeTeam : state.awayTeam) || '') + ' wins' : t.played + ' of ' + t.total + ' games played') + '</div>'
       :
         '<div class="summary-status">' + unitsLabel + (t.remaining===0 ? ' · ' + (winning==='tied'?'match drawn':winning+' team wins') : '') + '</div>' +
         '<div class="summary-cols"><div><div class="summary-col-title">Home players</div>' + homeRowsHtml + '</div><div><div class="summary-col-title">Away players</div>' + awayRowsHtml + '</div></div>') +
@@ -2988,7 +3040,7 @@
     var line = (fr.winner === 'home' ? '🟩 ' : '🟥 ') +
       fr.homePos + ' ' + (fr.homePlayer || 'No player') + ' vs ' +
       fr.awayPos + ' ' + (fr.awayPlayer || 'No player');
-    if(fr.type === 'race') line += ' (' + fr.homePoints + '-' + fr.awayPoints + ')';
+    if(fr.type === 'race' && JUNIORS_RACE_TO > 1) line += ' (' + fr.homePoints + '-' + fr.awayPoints + ')';
     return line;
   }
 
